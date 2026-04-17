@@ -1,0 +1,12 @@
+[package]
+name = "pipes_game"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = "0.25.10"
+nalgebra = "0.34.2"
+num-traits = "0.2.19"
+pixels = "0.16.0"
+winit = {version = "0.30.13", features = ["rwh_05"]}
+winit_input_helper = "0.17.0"
