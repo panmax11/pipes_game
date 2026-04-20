@@ -44,88 +44,195 @@ impl Sprite {
         let factor_x = self.size.x as f32 / size.x as f32;
         let factor_y = self.size.y as f32 / size.y as f32;
 
-        /*
-        if rot == 0 {
-            for sprite_y in 0..size.y {
-                for sprite_x in 0..size.x {
-                    self.scale_step(factor_x, factor_y, sprite_x, sprite_y, &mut pixels);
-                }
-            }
-        }
-
-        if rot == 1 {
-            for sprite_x in 0..size.x {
-                for sprite_y in (0..size.y).rev() {
-                    self.scale_step(factor_x, factor_y, sprite_x, sprite_y, &mut pixels);
-                }
-            }
-        }
-
-        if rot == 2 {
-            for sprite_y in (0..size.y).rev() {
-                for sprite_x in (0..size.x).rev(){
-                    self.scale_step(factor_x, factor_y, sprite_x, sprite_y, &mut pixels);
-                }
-            }
-        }
-
-        if rot == 3 {
-            for sprite_x in (0..size.x).rev() {
-                for sprite_y in 0..size.y {
-                    self.scale_step(factor_x, factor_y, sprite_x, sprite_y, &mut pixels);
-                }
-            }
-        }
-        */
         for sprite_y in 0..size.y {
-            for sprite_x in 0..size.x {
-                 self.scale_step(factor_x, factor_y, sprite_x, sprite_y, &mut pixels);
+                for sprite_x in 0..size.x {
+                let scaled_x = (sprite_x as f32 * factor_x) as u32;
+                let scaled_y = (sprite_y as f32 * factor_y) as u32;
+
+                let idx = idx(scaled_x, scaled_y, self.size.x) as usize * 4;
+
+                for i in 0..4 {
+                    pixels.push(self.pixels[idx + i]);
+                }            
             }
         }
 
         Sprite::new(pixels, size)
     }
-    fn scale_step(&self, factor_x: f32, factor_y: f32, sprite_x: u32, sprite_y: u32, pixels: &mut Vec<u8>) {
-        let scaled_x = (sprite_x as f32 * factor_x) as u32;
-        let scaled_y = (sprite_y as f32 * factor_y) as u32;
-
-        let idx = idx(scaled_x, scaled_y, self.size.x) as usize * 4;
-
-        for i in 0..4
-        {
-            pixels.push(self.pixels[idx + i]);
-        }
-    }
     pub fn rotate(&self, rot: f32) -> Sprite {
         // skew horizontal first
         // then vertical
         // and horizontal again, but in opposite dir
-        // i'll store the positions as vectors so it'll be easier to manipulate
 
-        let cos = rot.cos();
-        let sin = rot.sin();
+        // one problem with this technique is the tangent explosion
+        // the rotation will be heavily distorted after ≥90 degrees
+        // so i can rotate the image by 90 degrees as much as i can
+        // bc it is very easy and doesn't cause issues
+        // and then i can rotate the very last part using the 3-skew method
 
-        // aabb for the rotated rectangle
-        let new_width = ((self.size.x as f32 * cos).abs() + (self.size.y as f32 * sin).abs()) as u32;
-        let new_height = ((self.size.x as f32 * sin).abs() + (self.size.y as f32 * cos).abs()) as u32;
+        let right_angles = (rot / (PI / 2.0)).floor() as i32;
+        let angle_left = rot % (PI / 2.0);
 
-        let mut new_pixels = vec![0; (new_width * new_height) as usize * 4];
+        let sin = angle_left.sin();
+        let tan = -(angle_left / 2.0).tan();
 
-        let margin_x = (new_width - self.size.x) / 2;
-        let margin_y = (new_height - self.size.y) / 2;
+        let full_cos = rot.cos();
+        let full_sin = rot.sin();
 
+        // AABB LARGE ENOUGH TO CONTAIN THE ROTATED SPRITE
+        // BUT SLIGHTLY LARGER BECAUSE THE FIRST SKEW MAY MAKE IT WIDER THAN IT WILL REALLY BE
+        let new_width = ((self.size.x as f32 * full_cos).abs() + (self.size.y as f32 * full_sin).abs()) as u32;
+        let new_height = ((self.size.x as f32 * full_sin).abs() + (self.size.y as f32 * full_cos).abs()) as u32;
+        let max_width = ((new_width.pow(2) as f32 + new_height.pow(2) as f32).sqrt() * 1.5) as u32;
+        let mut pixels = vec![0; max_width.pow(2) as usize * 4];
+        
         // COPY FIRST
+        let margin_x = (max_width - self.size.x) / 2;
+        let margin_y = (max_width - self.size.y) / 2;
+
         for y in 0..self.size.y {
             for x in 0..self.size.x {
-                let og_idx = idx(x, y, self.size.x) as usize * 4;
-                let new_idx = idx(x + margin_x, y + margin_y, new_width) as usize * 4;
+                let old_idx = idx(x, y, self.size.x) as usize * 4;
+                let new_idx = idx(x + margin_x, y + margin_y, max_width) as usize * 4;
 
                 for i in 0..4 {
-                    new_pixels[new_idx + i] = self.pixels[og_idx + i];
+                    pixels[new_idx + i] = self.pixels[old_idx + i];
                 }
             }
         }
 
-        Sprite::new(new_pixels, vector![new_width, new_height])
+        // WE ROTATE BY 90 DEGREES FIRST
+        let mut temp_buffer = vec![0; max_width.pow(2) as usize * 4];
+
+        for _ in 0..right_angles {
+            for x in 0..max_width {
+                for y in 0..max_width {
+                    let new_x = max_width - 1 - y;
+                    let new_y = x;
+
+                    let old_idx = idx(x, y, max_width) as usize * 4;
+                    let new_idx = idx(new_x, new_y, max_width) as usize * 4;
+
+                    for i in 0..4 {
+                        temp_buffer[new_idx + i] = pixels[old_idx + i];
+                    }
+                }
+            }
+
+            pixels = temp_buffer.clone();
+        }
+
+        // therein lies the beauty
+
+        // HORIZONTAL SKEW
+        for y in 0..max_width {
+            let dist_y = y as i32 - max_width as i32 / 2;
+            let offset = (dist_y as f32 * tan) as i32;
+
+            let range: Vec<u32> = if offset > 0 {
+                (0..max_width).rev().collect()
+            } else {
+                (0..max_width).collect()
+            };
+
+            for x in range {
+                let new_x = x as i32 + offset;
+
+                if new_x >= 0 && new_x < max_width as i32 {
+                    let old_idx = idx(x, y, max_width) as usize * 4;
+                    let new_idx = idx(new_x as u32, y, max_width) as usize * 4;
+
+                    if old_idx == new_idx {
+                        continue;
+                    }
+
+                    for i in 0..4 {
+                        pixels[new_idx + i] = pixels[old_idx + i];
+                        pixels[old_idx + i] = 0;
+                    }
+                }
+            }
+        }
+
+        // VERTICAL SKEW
+        for x in 0..max_width {
+            let dist_x = x as i32 - max_width as i32 / 2;
+            let offset = (dist_x as f32 * sin) as i32;
+
+            let range: Vec<u32> = if offset > 0 {
+                (0..max_width).rev().collect()
+            } else {
+                (0..max_width).collect()
+            };
+
+            for y in range {
+                let new_y = y as i32 + offset;
+
+                if new_y >= 0 && new_y < max_width as i32 {
+                    let old_idx = idx(x, y, max_width) as usize * 4;
+                    let new_idx = idx(x, new_y as u32, max_width) as usize * 4;
+
+                    if old_idx == new_idx {
+                        continue;
+                    }
+
+                    for i in 0..4 {
+                        pixels[new_idx + i] = pixels[old_idx + i];
+                        pixels[old_idx + i] = 0;
+                    }
+                }
+            }
+        }
+
+        // HORIZONTAL SKEW
+        for y in 0..max_width {
+            let dist_y = y as i32 - max_width as i32 / 2;
+            let offset = (dist_y as f32 * tan) as i32;
+
+            let range: Vec<u32> = if offset > 0 {
+                (0..max_width).rev().collect()
+            } else {
+                (0..max_width).collect()
+            };
+
+            for x in range {
+                let new_x = x as i32 + offset;
+
+                if new_x >= 0 && new_x < max_width as i32 {
+                    let old_idx = idx(x, y, max_width) as usize * 4;
+                    let new_idx = idx(new_x as u32, y, max_width) as usize * 4;
+
+                    if old_idx == new_idx {
+                        continue;
+                    }
+
+                    for i in 0..4 {
+                        pixels[new_idx + i] = pixels[old_idx + i];
+                        pixels[old_idx + i] = 0;
+                    }
+                }
+            }
+        }
+        
+        // LAST COPY
+        // BACK TO THE CORRECT SIZE BUFFER
+        let mut new_pixels = vec![0; (new_width * new_height) as usize * 4];
+
+        let last_margin_x = (max_width - new_width) / 2;
+        let last_margin_y = (max_width - new_height) / 2;
+
+        for y in 0..new_height {
+            for x in 0.. new_width {
+                let old_idx = idx(x + last_margin_x, y + last_margin_y, max_width) as usize * 4;
+                let new_idx = idx(x, y, new_width) as usize * 4;
+
+                for i in 0..4 {
+                    new_pixels[new_idx + i] = pixels[old_idx + i];
+                }
+            }
+        }
+        
+        let new_size = vector![new_width, new_height];
+        Sprite::new(new_pixels, new_size)
     }
 }

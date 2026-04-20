@@ -1,7 +1,7 @@
 use std::{collections::HashMap, f32::consts::PI, sync::Arc};
 
 use nalgebra::{Vector2, vector};
-use pixels::{Pixels, SurfaceTexture, wgpu::Color};
+use pixels::{Pixels, SurfaceTexture};
 use winit::{application::ApplicationHandler, dpi::PhysicalSize, event::{DeviceEvent, DeviceId, StartCause, WindowEvent}, event_loop::ActiveEventLoop, window::{Window, WindowId}};
 use winit_input_helper::WinitInputHelper;
 
@@ -14,7 +14,8 @@ pub struct App<'a> {
     pub window: Option<Arc<Window>>,
     pub pixels: Option<Pixels<'a>>,
     pub input: WinitInputHelper,
-    pub sprites: HashMap<u8, Sprite>
+    pub sprites: HashMap<u8, Sprite>,
+    timer: f32
 }
 impl<'a> App<'a> {
     pub fn new() -> Self {
@@ -26,14 +27,27 @@ impl<'a> App<'a> {
             sprites.insert(0, sprite);
         }
 
-        Self { window: None, pixels: None, input: WinitInputHelper::new(), sprites}
+        Self { window: None, pixels: None, input: WinitInputHelper::new(), sprites, timer: 0.0 }
     }
     pub fn update(&mut self) {
-        if let Some(pixels) = self.pixels.as_mut()  {
-            pixels.clear_color(Color::BLACK);
+        self.clear([0, 0, 0, 255]);
+
+        if let Some(delta) = self.input.delta_time() {
+            self.timer = (self.timer + delta.as_secs_f32()).rem_euclid(PI * 2.0);
         }
 
-        self.draw_sprite(0, vector![200, 200], vector![100, 100], PI / 2.0);
+        self.draw_sprite(0, vector![200, 200], vector![100, 100], self.timer);
+    }
+    fn clear(&mut self, color: [u8; 4]) {
+        if let Some(pixels) = self.pixels.as_mut()  {
+            let frame = pixels.frame_mut();
+
+            for pixel in frame.chunks_exact_mut(4) {
+                for i in 0..4 {
+                    pixel[i] = color[i];
+                }
+            }
+        }
     }
     fn draw_sprite(&mut self, id: u8, pos: Vector2<i32>, size: Vector2<u32>, rot: f32) {
         let sprite = if let Some(x) = self.sprites.get_mut(&id) {
@@ -48,7 +62,7 @@ impl<'a> App<'a> {
             return;
         };
 
-        let rotated = sprite.rotate(0.0);
+        let rotated = sprite.scale(size).rotate(rot);
 
         let half_width = rotated.size.x / 2;
         let half_height = rotated.size.y / 2;
