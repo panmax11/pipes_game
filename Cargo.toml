@@ -8,5 +8,9 @@ image = "0.25.10"
 nalgebra = "0.34.2"
 num-traits = "0.2.19"
 pixels = "0.16.0"
-winit = {version = "0.30.13", features = ["rwh_05"]}
+rand = "0.10.1"
+winit = { version = "0.30.13", features = ["rwh_05"] }
 winit_input_helper = "0.17.0"
+
+[profile.dev]
+opt-level = 1

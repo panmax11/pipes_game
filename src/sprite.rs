@@ -5,9 +5,10 @@ use nalgebra::{Vector2, vector};
 
 use crate::idx;
 
+#[derive(Clone)]
 pub struct Sprite {
     pub pixels: Vec<u8>,
-    pub size: Vector2<u32>
+    pub size: Vector2<u32>,
 }
 impl Sprite {
     pub fn from(path: &str) -> Result<Self, ImageError> {
@@ -17,26 +18,18 @@ impl Sprite {
 
         let mut pixels = Vec::with_capacity((width * height) as usize);
 
-        for pixel in img.pixels()
-        {
-            for color in pixel.0
-            {
+        for pixel in img.pixels() {
+            for color in pixel.0 {
                 pixels.push(color);
             }
         }
 
         let size = vector![width, height];
 
-        Ok(Self {
-            pixels,
-            size
-        })
+        Ok(Self { pixels, size })
     }
-    pub fn new(pixels: Vec<u8>, size: Vector2<u32>) -> Self {
-        Self {
-            pixels,
-            size
-        }
+    pub const fn new(pixels: Vec<u8>, size: Vector2<u32>) -> Self {
+        Self { pixels, size }
     }
     pub fn scale(&self, size: Vector2<u32>) -> Sprite {
         let mut pixels = Vec::with_capacity((size.x * size.y) as usize);
@@ -45,7 +38,7 @@ impl Sprite {
         let factor_y = self.size.y as f32 / size.y as f32;
 
         for sprite_y in 0..size.y {
-                for sprite_x in 0..size.x {
+            for sprite_x in 0..size.x {
                 let scaled_x = (sprite_x as f32 * factor_x) as u32;
                 let scaled_y = (sprite_y as f32 * factor_y) as u32;
 
@@ -53,7 +46,7 @@ impl Sprite {
 
                 for i in 0..4 {
                     pixels.push(self.pixels[idx + i]);
-                }            
+                }
             }
         }
 
@@ -71,7 +64,7 @@ impl Sprite {
         // and then i can rotate the very last part using the 3-skew method
 
         let right_angles = (rot / (PI / 2.0)).floor() as i32;
-        let angle_left = rot % (PI / 2.0);
+        let angle_left = rot - right_angles as f32 * (PI / 2.0);
 
         let sin = angle_left.sin();
         let tan = -(angle_left / 2.0).tan();
@@ -81,11 +74,13 @@ impl Sprite {
 
         // AABB LARGE ENOUGH TO CONTAIN THE ROTATED SPRITE
         // BUT SLIGHTLY LARGER BECAUSE THE FIRST SKEW MAY MAKE IT WIDER THAN IT WILL REALLY BE
-        let new_width = ((self.size.x as f32 * full_cos).abs() + (self.size.y as f32 * full_sin).abs()) as u32;
-        let new_height = ((self.size.x as f32 * full_sin).abs() + (self.size.y as f32 * full_cos).abs()) as u32;
+        let new_width =
+            ((self.size.x as f32 * full_cos).abs() + (self.size.y as f32 * full_sin).abs()) as u32;
+        let new_height =
+            ((self.size.x as f32 * full_sin).abs() + (self.size.y as f32 * full_cos).abs()) as u32;
         let max_width = ((new_width.pow(2) as f32 + new_height.pow(2) as f32).sqrt() * 1.5) as u32;
         let mut pixels = vec![0; max_width.pow(2) as usize * 4];
-        
+
         // COPY FIRST
         let margin_x = (max_width - self.size.x) / 2;
         let margin_y = (max_width - self.size.y) / 2;
@@ -213,7 +208,7 @@ impl Sprite {
                 }
             }
         }
-        
+
         // LAST COPY
         // BACK TO THE CORRECT SIZE BUFFER
         let mut new_pixels = vec![0; (new_width * new_height) as usize * 4];
@@ -222,7 +217,7 @@ impl Sprite {
         let last_margin_y = (max_width - new_height) / 2;
 
         for y in 0..new_height {
-            for x in 0.. new_width {
+            for x in 0..new_width {
                 let old_idx = idx(x + last_margin_x, y + last_margin_y, max_width) as usize * 4;
                 let new_idx = idx(x, y, new_width) as usize * 4;
 
@@ -231,7 +226,7 @@ impl Sprite {
                 }
             }
         }
-        
+
         let new_size = vector![new_width, new_height];
         Sprite::new(new_pixels, new_size)
     }
