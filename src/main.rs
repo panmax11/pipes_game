@@ -9,7 +9,7 @@ mod input;
 mod sprite;
 mod tween;
 mod tween_manager;
-mod wfc;
+mod wave_function_collapse;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -17,6 +17,8 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = App::new();
+
+    app.setup();
 
     event_loop.run_app(&mut app).unwrap();
 }

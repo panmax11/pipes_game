@@ -18,15 +18,20 @@ use winit::{
 use winit_input_helper::WinitInputHelper;
 
 use crate::{
-    direction::Direction, idx, input::InputAction, sprite::Sprite, tween::Tween,
+    direction::Direction,
+    idx,
+    input::InputAction,
+    sprite::Sprite,
+    tween::Tween,
     tween_manager::TweenManager,
+    wave_function_collapse::{PROPAGATE_OFFSETS, WaveFunctionCollapse},
 };
 
 pub const SCREEN_WIDTH: u32 = 400;
 pub const SCREEN_HEIGHT: u32 = 400;
 
-pub const MAP_WIDTH: usize = 10;
-pub const MAP_HEIGHT: usize = 10;
+pub const MAP_WIDTH: usize = 4;
+pub const MAP_HEIGHT: usize = 4;
 
 pub const SPRITE_WIDTH: u32 = (SCREEN_WIDTH as f32 / MAP_WIDTH as f32) as u32;
 pub const SPRITE_HEIGHT: u32 = (SCREEN_WIDTH as f32 / MAP_WIDTH as f32) as u32;
@@ -40,7 +45,6 @@ pub const SELECTED_SPRITE_COLOR: [u8; 4] = [0, 0, 255, 255];
 pub const TILE_ROTATION_RATE: f32 = 0.5;
 
 // MISC
-pub static EMPTY: LazyLock<BTreeSet<Direction>> = LazyLock::new(|| BTreeSet::new());
 pub static TBLR: LazyLock<BTreeSet<Direction>> = LazyLock::new(|| {
     let mut dirs = BTreeSet::new();
     dirs.insert(Direction::Up);
@@ -49,7 +53,7 @@ pub static TBLR: LazyLock<BTreeSet<Direction>> = LazyLock::new(|| {
     dirs.insert(Direction::Right);
     dirs
 });
-pub static ALL: LazyLock<Vec<BTreeSet<Direction>>> = LazyLock::new(|| {
+pub static ALL_DIRS: LazyLock<Vec<BTreeSet<Direction>>> = LazyLock::new(|| {
     let mut all = Vec::new();
     all.push(TBLR.clone());
 
@@ -340,6 +344,7 @@ pub struct App<'a> {
     pub left_input: InputAction,
     pub right_input: InputAction,
     pub rotate_input: InputAction,
+    pub map_generator: WaveFunctionCollapse,
     timer: f32,
 }
 impl<'a> App<'a> {
@@ -359,37 +364,11 @@ impl<'a> App<'a> {
         sprites.insert(4, THREE_SPRITE.clone());
         sprites.insert(5, CURRENTLY_SELECTED_SPRITE.clone());
 
-        let mut map = HashMap::with_capacity(MAP_WIDTH * MAP_HEIGHT);
+        let map_generator = WaveFunctionCollapse::new();
 
-        for y in 0..MAP_HEIGHT {
-            for x in 0..MAP_WIDTH {
-                let rand = random_range(0..ALL.len());
-                let pos = vector![x, y];
-                let tile = ALL[rand].clone();
-                map.insert(pos, tile);
-            }
-        }
+        let map = HashMap::with_capacity(MAP_WIDTH * MAP_HEIGHT);
 
-        let mut rotation_map = HashMap::with_capacity(MAP_WIDTH * MAP_HEIGHT);
-
-        for y in 0..MAP_HEIGHT {
-            for x in 0..MAP_WIDTH {
-                let pos = vector![x, y];
-                let tile = if let Some(x) = map.get(&pos) {
-                    x
-                } else {
-                    println!("No tile entry for {}", pos);
-                    continue;
-                };
-
-                let rot = if let Some(x) = TILE_SPRITE_MAP.get(tile) {
-                    x.1
-                } else {
-                    0.0
-                };
-                rotation_map.insert(pos, rot);
-            }
-        }
+        let rotation_map = HashMap::with_capacity(MAP_WIDTH * MAP_HEIGHT);
 
         let tween_manager = TweenManager::new();
 
@@ -413,7 +392,33 @@ impl<'a> App<'a> {
             left_input,
             right_input,
             rotate_input,
+            map_generator,
             timer: 0.0,
+        }
+    }
+    pub fn setup(&mut self) {
+        self.map = self.map_generator.generate();
+        self.setup_rotation_map();
+    }
+    fn setup_rotation_map(&mut self) {
+        for y in 0..MAP_HEIGHT {
+            for x in 0..MAP_WIDTH {
+                let pos = vector![x, y];
+                let tile = if let Some(x) = self.map.get(&pos) {
+                    x
+                } else {
+                    println!("No tile entry for [X: {}; Y: {}]", pos.x, pos.y);
+                    continue;
+                };
+
+                let rot = if let Some(x) = TILE_SPRITE_MAP.get(tile) {
+                    x.1
+                } else {
+                    0.0
+                };
+
+                self.rotation_map.insert(pos, rot);
+            }
         }
     }
     pub fn update(&mut self) {
@@ -422,8 +427,6 @@ impl<'a> App<'a> {
         self.rotate_selected();
         self.update_tweens();
         self.render_map();
-
-        // self.draw_sprite(0, vector![200, 200], vector![100, 100], self.timer);
     }
     fn update_tweens(&mut self) {
         let delta_time = if let Some(x) = self.input.delta_time() {
