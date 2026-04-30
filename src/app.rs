@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use nalgebra::{Vector2, vector};
+use nalgebra::{SimdComplexField, Vector2, vector};
 use pixels::{Pixels, SurfaceTexture};
 use rand::random_range;
 use winit::{
@@ -42,7 +42,12 @@ pub const DEFAULT_SPRITE_COLOR: [u8; 4] = [255, 0, 0, 255];
 
 pub const SELECTED_SPRITE_COLOR: [u8; 4] = [0, 0, 255, 255];
 
-pub const TILE_ROTATION_RATE: f32 = 0.5;
+pub const TILE_ROTATION_DURATION: f32 = 0.5;
+
+pub const GAME_RUNNING_BG_COLOR: [u8; 4] = [0, 0, 0, 255];
+pub const GAME_SOLVED_BG_COLOR: [u8; 4] = [0, 255, 0, 255];
+
+pub const SOLVED_TIMER_DURATION: f32 = 2.0;
 
 // MISC
 pub static TBLR: LazyLock<BTreeSet<Direction>> = LazyLock::new(|| {
@@ -100,6 +105,10 @@ impl Rotate for Tile {
     }
 }
 
+pub enum GameState {
+    Running,
+    Solved,
+}
 // ONE
 pub static TOP: LazyLock<BTreeSet<Direction>> = LazyLock::new(|| {
     let mut dirs = BTreeSet::new();
@@ -345,6 +354,7 @@ pub struct App<'a> {
     pub right_input: InputAction,
     pub rotate_input: InputAction,
     pub map_generator: WaveFunctionCollapse,
+    pub state: GameState,
     timer: f32,
 }
 impl<'a> App<'a> {
@@ -393,6 +403,7 @@ impl<'a> App<'a> {
             right_input,
             rotate_input,
             map_generator,
+            state: GameState::Running,
             timer: 0.0,
         }
     }
@@ -422,11 +433,40 @@ impl<'a> App<'a> {
         }
     }
     pub fn update(&mut self) {
-        self.clear([0, 0, 0, 255]);
+        self.state_machine();
+    }
+    fn state_machine(&mut self) {
+        match self.state {
+            GameState::Running => self.running_coroutine(),
+            GameState::Solved => self.solved_coroutine(),
+        }
+    }
+    fn running_coroutine(&mut self) {
+        self.clear(GAME_RUNNING_BG_COLOR);
         self.move_selected();
         self.rotate_selected();
         self.update_tweens();
+        self.render_currently_selected();
         self.render_map();
+
+        if self.solved() {
+            self.state = GameState::Solved;
+        }
+    }
+    fn solved_coroutine(&mut self) {
+        self.clear(GAME_SOLVED_BG_COLOR);
+        self.update_tweens();
+        self.render_map();
+
+        if let Some(delta) = self.input.delta_time() {
+            self.timer += delta.as_secs_f32();
+        }
+
+        if self.timer > SOLVED_TIMER_DURATION {
+            self.timer = 0.0;
+            self.setup();
+            self.state = GameState::Running;
+        }
     }
     fn update_tweens(&mut self) {
         let delta_time = if let Some(x) = self.input.delta_time() {
@@ -459,17 +499,6 @@ impl<'a> App<'a> {
     fn render_map(&mut self) {
         let size = vector![SPRITE_WIDTH, SPRITE_HEIGHT];
 
-        let currently_selected_draw_pos_x =
-            (self.currently_selected.x as u32 * SPRITE_WIDTH + SPRITE_WIDTH / 2) as i32;
-
-        let currently_selected_draw_pos_y =
-            (self.currently_selected.y as u32 * SPRITE_HEIGHT + SPRITE_HEIGHT / 2) as i32;
-
-        let currently_selected_draw_pos =
-            vector![currently_selected_draw_pos_x, currently_selected_draw_pos_y];
-
-        self.draw_sprite(5, currently_selected_draw_pos, size, 0.0);
-
         for y in 0..MAP_HEIGHT {
             for x in 0..MAP_WIDTH {
                 let pos = vector![x, y];
@@ -500,6 +529,20 @@ impl<'a> App<'a> {
                 self.draw_sprite(id, draw_pos, size, rot);
             }
         }
+    }
+    fn render_currently_selected(&mut self) {
+        let size = vector![SPRITE_WIDTH, SPRITE_HEIGHT];
+
+        let currently_selected_draw_pos_x =
+            (self.currently_selected.x as u32 * SPRITE_WIDTH + SPRITE_WIDTH / 2) as i32;
+
+        let currently_selected_draw_pos_y =
+            (self.currently_selected.y as u32 * SPRITE_HEIGHT + SPRITE_HEIGHT / 2) as i32;
+
+        let currently_selected_draw_pos =
+            vector![currently_selected_draw_pos_x, currently_selected_draw_pos_y];
+
+        self.draw_sprite(5, currently_selected_draw_pos, size, 0.0);
     }
     fn draw_sprite(&mut self, id: u8, pos: Vector2<i32>, size: Vector2<u32>, rot: f32) {
         let sprite = if let Some(x) = self.sprites.get_mut(&id) {
@@ -602,12 +645,41 @@ impl<'a> App<'a> {
                     return;
                 };
 
-                let tween = Tween::new(old_rot, new_rot, TILE_ROTATION_RATE);
+                let tween = Tween::new(old_rot, new_rot, TILE_ROTATION_DURATION);
                 self.tween_manager
                     .tweens
                     .insert(self.currently_selected, tween);
             }
         }
+    }
+    fn solved(&self) -> bool {
+        for (pos, tile_1) in self.map.iter() {
+            for (dir, offset) in PROPAGATE_OFFSETS.clone() {
+                let temp_pos = vector![pos.x as i32, pos.y as i32] + offset;
+
+                if temp_pos.x >= 0
+                    && temp_pos.x < MAP_WIDTH as i32
+                    && temp_pos.y >= 0
+                    && temp_pos.y < MAP_HEIGHT as i32
+                {
+                    let final_pos = vector![temp_pos.x as usize, temp_pos.y as usize];
+
+                    let tile_2 = if let Some(x) = self.map.get(&final_pos) {
+                        x
+                    } else {
+                        continue;
+                    };
+
+                    let opposite_dir = dir.opposite();
+
+                    if tile_2.contains(&opposite_dir) != tile_1.contains(&dir) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
     }
 }
 impl<'a> ApplicationHandler for App<'a> {
