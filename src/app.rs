@@ -675,6 +675,10 @@ impl<'a> App<'a> {
                     if tile_2.contains(&opposite_dir) != tile_1.contains(&dir) {
                         return false;
                     }
+                } else {
+                    if tile_1.contains(&dir) {
+                        return false;
+                    }
                 }
             }
         }
