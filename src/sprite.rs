@@ -53,16 +53,6 @@ impl Sprite {
         Sprite::new(pixels, size)
     }
     pub fn rotate(&self, rot: f32) -> Sprite {
-        // skew horizontal first
-        // then vertical
-        // and horizontal again, but in opposite dir
-
-        // one problem with this technique is the tangent explosion
-        // the rotation will be heavily distorted after ≥90 degrees
-        // so i can rotate the image by 90 degrees as much as i can
-        // bc it is very easy and doesn't cause issues
-        // and then i can rotate the very last part using the 3-skew method
-
         let right_angles = (rot / (PI / 2.0)).floor() as i32;
         let angle_left = rot - right_angles as f32 * (PI / 2.0);
 
@@ -72,8 +62,6 @@ impl Sprite {
         let full_cos = rot.cos();
         let full_sin = rot.sin();
 
-        // AABB LARGE ENOUGH TO CONTAIN THE ROTATED SPRITE
-        // BUT SLIGHTLY LARGER BECAUSE THE FIRST SKEW MAY MAKE IT WIDER THAN IT WILL REALLY BE
         let new_width =
             ((self.size.x as f32 * full_cos).abs() + (self.size.y as f32 * full_sin).abs()) as u32;
         let new_height =
@@ -81,7 +69,6 @@ impl Sprite {
         let max_width = ((new_width.pow(2) as f32 + new_height.pow(2) as f32).sqrt() * 1.5) as u32;
         let mut pixels = vec![0; max_width.pow(2) as usize * 4];
 
-        // COPY FIRST
         let margin_x = (max_width - self.size.x) / 2;
         let margin_y = (max_width - self.size.y) / 2;
 
@@ -96,7 +83,6 @@ impl Sprite {
             }
         }
 
-        // WE ROTATE BY 90 DEGREES FIRST
         let mut temp_buffer = vec![0; max_width.pow(2) as usize * 4];
 
         for _ in 0..right_angles {
@@ -116,8 +102,6 @@ impl Sprite {
 
             pixels = temp_buffer.clone();
         }
-
-        // therein lies the beauty
 
         // HORIZONTAL SKEW
         for y in 0..max_width {
@@ -209,8 +193,6 @@ impl Sprite {
             }
         }
 
-        // LAST COPY
-        // BACK TO THE CORRECT SIZE BUFFER
         let mut new_pixels = vec![0; (new_width * new_height) as usize * 4];
 
         let last_margin_x = (max_width - new_width) / 2;

@@ -4,9 +4,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use nalgebra::{SimdComplexField, Vector2, vector};
+use nalgebra::{Vector2, vector};
 use pixels::{Pixels, SurfaceTexture};
-use rand::random_range;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -738,29 +737,6 @@ impl<'a> ApplicationHandler for App<'a> {
 
         if let Some(window) = &self.window {
             window.request_redraw();
-        }
-    }
-}
-pub fn fill_rectangular(
-    buffer: &mut [u8],
-    size: Vector2<u32>,
-    rectangle_size: Vector2<u32>,
-    center: Vector2<u32>,
-    color: [u8; 4],
-) {
-    let start_x = center.x - rectangle_size.x / 2;
-    let start_y = center.y - rectangle_size.y / 2;
-
-    let end_x = center.x + rectangle_size.x / 2;
-    let end_y = center.y + rectangle_size.y / 2;
-
-    for x in start_x..end_x {
-        for y in start_y..end_y {
-            let idx = idx(x, y, size.x) as usize * 4;
-
-            for i in 0..4 {
-                buffer[idx + i] = color[i];
-            }
         }
     }
 }
